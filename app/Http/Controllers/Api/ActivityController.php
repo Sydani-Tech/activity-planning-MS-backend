@@ -28,11 +28,11 @@ class ActivityController extends Controller
             $query->where('approval_status', 'approved');
         }
 
-        if ($request->has('approval_status')) {
+        if ($request->filled('approval_status')) {
             $query->where('approval_status', $request->approval_status);
         }
 
-        if ($request->has('department_id')) {
+        if (!in_array($request->user()->role, ['focal_person']) && $request->filled('department_id')) {
             $query->where('department_id', $request->department_id);
         }
         if ($request->has('status')) {
@@ -74,6 +74,10 @@ class ActivityController extends Controller
 
     public function store(Request $request)
     {
+        if ($request->user()->role === 'program_manager') {
+            return response()->json(['message' => 'Program managers are not authorized to create activities.'], 403);
+        }
+
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -161,8 +165,12 @@ class ActivityController extends Controller
 
     public function update(Request $request, Activity $activity)
     {
+        if ($request->user()->role === 'program_manager') {
+            return response()->json(['message' => 'Program managers are not authorized to edit activity structure.'], 403);
+        }
+
         // Governance block (Test Case 3) - Only admins/managers can edit an approved activity's structure
-        if ($activity->approval_status === 'approved' && !in_array($request->user()->role, ['admin', 'super_admin', 'program_manager'])) {
+        if ($activity->approval_status === 'approved' && !in_array($request->user()->role, ['admin', 'super_admin'])) {
             return response()->json(['message' => 'Activity structure cannot be modified after approval.'], 403);
         }
 
@@ -250,6 +258,48 @@ class ActivityController extends Controller
         return response()->json($activity->fresh()->load(['department', 'creator', 'updates.updater']));
     }
 
+    public function verify(Request $request, Activity $activity)
+    {
+        if ($activity->status !== 'ongoing') {
+            return response()->json(['message' => 'Only ongoing activities can be verified.'], 403);
+        }
+
+        $request->validate([
+            'remarks' => 'nullable|string'
+        ]);
+
+        $oldValues = $activity->toArray();
+        $activity->is_verified = true;
+        $activity->save();
+
+        if ($request->remarks) {
+            $activity->updates()->create([
+                'updated_by' => $request->user()->id,
+                'status' => $activity->status,
+                'remarks' => $request->remarks . ' (Activity Verified)',
+            ]);
+        }
+
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'verified',
+            'model_type' => 'Activity',
+            'model_id' => $activity->id,
+            'old_values' => $oldValues,
+            'new_values' => $activity->fresh()->toArray(),
+            'ip_address' => $request->ip(),
+        ]);
+
+        Notification::create([
+            'user_id' => $activity->created_by,
+            'activity_id' => $activity->id,
+            'type' => 'verified',
+            'message' => "Your activity '{$activity->title}' has been verified and is ready for completion.",
+        ]);
+
+        return response()->json($activity->fresh()->load(['department', 'creator', 'updates.updater']));
+    }
+
     public function destroy(Request $request, Activity $activity)
     {
         AuditLog::create([
@@ -275,6 +325,10 @@ class ActivityController extends Controller
             'remarks' => 'nullable|string',
             'attachment' => 'nullable|file|max:10240',
         ]);
+
+        if ($request->status === 'completed' && !$activity->is_verified) {
+            return response()->json(['message' => 'This activity must be verified by a Manager or Admin before it can be marked as completed.'], 403);
+        }
 
         $oldStatus = $activity->status;
 

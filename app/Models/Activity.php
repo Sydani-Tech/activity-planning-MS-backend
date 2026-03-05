@@ -23,6 +23,7 @@ class Activity extends Model
         'status',
         'approval_status',
         'remarks',
+        'is_verified',
     ];
 
     protected $casts = [

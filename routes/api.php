@@ -86,8 +86,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/audit-logs', [AuditLogController::class, 'index']);
     });
 
-    // Activities approval (super_admin, admin, program_manager)
+    // Activities approval and verification (super_admin, admin, program_manager)
     Route::middleware('role:super_admin,admin,program_manager')->group(function () {
         Route::put('/activities/{activity}/approval', [ActivityController::class, 'approve']);
+        Route::put('/activities/{activity}/verify', [ActivityController::class, 'verify']);
     });
 });

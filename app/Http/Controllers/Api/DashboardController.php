@@ -34,9 +34,15 @@ class DashboardController extends Controller
         ]);
     }
 
-    public function departmentBreakdown()
+    public function departmentBreakdown(Request $request)
     {
-        $data = Activity::where('approval_status', 'approved')
+        $query = Activity::where('approval_status', 'approved');
+
+        if ($request->user()->role === 'focal_person') {
+            $query->where('department_id', $request->user()->department_id);
+        }
+
+        $data = $query
             ->select('department_id', 'status', DB::raw('count(*) as count'))
             ->groupBy('department_id', 'status')
             ->with('department:id,name')
@@ -58,9 +64,15 @@ class DashboardController extends Controller
         return response()->json($data);
     }
 
-    public function weeklyProgress()
+    public function weeklyProgress(Request $request)
     {
-        $data = Activity::where('approval_status', 'approved')
+        $query = Activity::where('approval_status', 'approved');
+
+        if ($request->user()->role === 'focal_person') {
+            $query->where('department_id', $request->user()->department_id);
+        }
+
+        $data = $query
             ->select('week', 'status', DB::raw('count(*) as count'))
             ->whereNotNull('week')
             ->groupBy('week', 'status')

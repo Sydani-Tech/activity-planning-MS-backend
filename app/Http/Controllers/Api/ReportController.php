@@ -14,6 +14,14 @@ class ReportController extends Controller
     {
         $query = Activity::with(['department', 'creator']);
 
+        if ($request->user()->role === 'focal_person') {
+            $query->where('department_id', $request->user()->department_id);
+        }
+
+        if ($request->user()->role === 'executive') {
+            $query->where('approval_status', 'approved');
+        }
+
         if ($request->filled('department_id')) {
             $query->where('department_id', $request->department_id);
         }
